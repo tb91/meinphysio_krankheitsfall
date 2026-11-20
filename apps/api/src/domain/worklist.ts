@@ -1,4 +1,5 @@
-import { NotImplementedError, type IsoDate, type TerminoAppointment, type UtcIso } from './types.js';
+import { addMinutes, localDate, PRACTICE_TIME_ZONE } from './time.js';
+import type { IsoDate, TerminoAppointment, UtcIso } from './types.js';
 
 /**
  * Arbeitsliste des Empfangs: alle betroffenen Termine einer ausgefallenen Person an einem Tag,
@@ -24,15 +25,36 @@ export interface WorklistQuery {
 }
 
 /**
- * Erwartetes Verhalten (siehe worklist.test.ts):
  * - nur gebuchte (nicht stornierte) Termine der Person
- * - Tageszugehörigkeit nach Ortszeit Europe/Berlin
- * - aufsteigend nach Startzeit, bei Gleichstand deterministisch nach Termin-ID
- * - unabhängig von der Reihenfolge im Export
+ * - Tageszugehörigkeit nach Ortszeit
+ * - aufsteigend nach Startzeit, bei Gleichstand nach Termin-ID (deterministisch)
  */
 export function buildWorklist(
-  _appointments: readonly TerminoAppointment[],
-  _query: WorklistQuery,
+  appointments: readonly TerminoAppointment[],
+  query: WorklistQuery,
 ): WorklistItem[] {
-  throw new NotImplementedError('buildWorklist');
+  const timeZone = query.timeZone ?? PRACTICE_TIME_ZONE;
+
+  return appointments
+    .filter(
+      (a) =>
+        a.practitioner_id === query.practitionerId &&
+        a.status === 'booked' &&
+        localDate(a.starts_at, timeZone) === query.date,
+    )
+    .sort((a, b) => {
+      const byTime = Date.parse(a.starts_at) - Date.parse(b.starts_at);
+      if (byTime !== 0) return byTime;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    })
+    .map((a, index) => ({
+      position: index + 1,
+      appointmentId: a.id,
+      startsAt: a.starts_at,
+      endsAt: addMinutes(a.starts_at, a.duration_min),
+      locationId: a.location_id,
+      service: a.service,
+      patientName: a.patient?.name ?? 'Unbekannt',
+      terminoPatientId: a.patient?.id ?? null,
+    }));
 }

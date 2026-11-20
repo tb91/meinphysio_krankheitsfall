@@ -1,4 +1,4 @@
-import { NotImplementedError, type TerminoAppointment, type UtcIso } from './types.js';
+import type { TerminoAppointment, UtcIso } from './types.js';
 
 /**
  * Belegungsbuch: welche Therapeut:in ist wann belegt. Quelle sind die gebuchten Termino-Termine
@@ -32,26 +32,62 @@ export type ReserveResult =
   | { ok: true; ledger: SlotLedger }
   | { ok: false; reason: 'conflict'; conflictsWith: Reservation };
 
-/** Baut das Ledger aus dem Export. Nur `booked` belegt, `cancelled` gibt frei. */
-export function createSlotLedger(_appointments: readonly TerminoAppointment[]): SlotLedger {
-  throw new NotImplementedError('createSlotLedger');
+interface Interval {
+  practitionerId: string;
+  startsAt: UtcIso;
+  durationMin: number;
+}
+
+/** Halboffene Intervalle [start, end): angrenzende Slots überschneiden sich nicht. */
+function overlaps(a: Interval, b: Interval): boolean {
+  if (a.practitionerId !== b.practitionerId) return false;
+  const aStart = Date.parse(a.startsAt);
+  const bStart = Date.parse(b.startsAt);
+  const aEnd = aStart + a.durationMin * 60_000;
+  const bEnd = bStart + b.durationMin * 60_000;
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/** Nur `booked` belegt, `cancelled` gibt frei. */
+export function createSlotLedger(appointments: readonly TerminoAppointment[]): SlotLedger {
+  return {
+    reservations: appointments
+      .filter((a) => a.status === 'booked')
+      .map((a) => ({
+        practitionerId: a.practitioner_id,
+        startsAt: a.starts_at,
+        durationMin: a.duration_min,
+        source: 'termino' as const,
+        refId: a.id,
+      })),
+  };
 }
 
 /**
- * Reserviert einen Slot für eine Umbuchung.
  * - Überschneidung (auch teilweise) mit bestehender Reservierung derselben Person → Konflikt
  * - direkt angrenzende Slots (Ende == Start) sind erlaubt
- * - erneute Reservierung für denselben `refId` verschiebt (alte Reservierung wird freigegeben)
+ * - erneute Reservierung für denselben `refId` verschiebt (alte Umbuchung wird freigegeben)
  */
-export function reserve(_ledger: SlotLedger, _request: ReservationRequest): ReserveResult {
-  throw new NotImplementedError('reserve');
+export function reserve(ledger: SlotLedger, request: ReservationRequest): ReserveResult {
+  // Eine frühere Umbuchung desselben Falls zählt nicht als Konflikt, sie wird ersetzt.
+  const remaining = ledger.reservations.filter(
+    (r) => !(r.source === 'rebooking' && r.refId === request.refId),
+  );
+
+  const conflict = remaining.find((r) => overlaps(r, request));
+  if (conflict) return { ok: false, reason: 'conflict', conflictsWith: conflict };
+
+  return {
+    ok: true,
+    ledger: { reservations: [...remaining, { ...request, source: 'rebooking' }] },
+  };
 }
 
 export function isFree(
-  _ledger: SlotLedger,
-  _practitionerId: string,
-  _startsAt: UtcIso,
-  _durationMin: number,
+  ledger: SlotLedger,
+  practitionerId: string,
+  startsAt: UtcIso,
+  durationMin: number,
 ): boolean {
-  throw new NotImplementedError('isFree');
+  return !ledger.reservations.some((r) => overlaps(r, { practitionerId, startsAt, durationMin }));
 }
