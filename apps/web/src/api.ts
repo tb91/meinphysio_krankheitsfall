@@ -94,6 +94,8 @@ export interface OutageView {
     imported: number;
     withWarnings: number;
     rejected: number;
+    /** Änderungen gegenüber dem vorigen Export; null beim Ausgangsstand */
+    lastDiff: { added: number; changed: number; removed: number } | null;
   };
   progress: { total: number; decided: number; notified: number; synced: number; done: number };
   cases: CaseView[];
@@ -128,4 +130,6 @@ export const api = {
     request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'POST', body: JSON.stringify(body) }),
   withdrawTerminoSynced: (id: string) => request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'DELETE' }),
   reset: () => request<{ ok: boolean }>('/api/demo/reset', { method: 'POST' }),
+  setClock: (localTime: string) =>
+    request<{ ok: boolean; now: string }>('/api/demo/clock', { method: 'POST', body: JSON.stringify({ localTime }) }),
 };

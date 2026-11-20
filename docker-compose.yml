@@ -22,8 +22,10 @@ services:
       DATABASE_URL: postgres://physio:physio@db:5432/physio
       DATA_DIR: /app/data
       # Szenario liegt in der Vergangenheit: "jetzt" ist konfigurierbar.
-      NOW: "2026-09-07T07:40:00+02:00"
+      NOW: ${NOW:-2026-09-07T07:40:00+02:00}
       PORT: "3000"
+      # debug zeigt auch Routine-Meldungen (z. B. "keine neuen Termino-Daten", jeder Request)
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ./data:/app/data:ro
     ports:
@@ -31,6 +33,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # Simuliert den externen Import-Job (z. B. Zapier): alle 5 Min. Szenario-Zeit
+  # wird der fällige termino_export_*.json an die API übergeben.
+  termino-sync:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["npm", "run", "sync"]
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:3000
+      DATA_DIR: /app/data
+      # debug zeigt auch "Keine neuen Termino-Exporte"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      - api
 
   web:
     build:

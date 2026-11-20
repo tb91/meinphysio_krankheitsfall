@@ -27,6 +27,8 @@ export interface OutageContext {
   master: MasterData;
   appointments: TerminoAppointment[];
   importReport: ImportReport;
+  /** Änderungen gegenüber dem vorigen Export; null beim Ausgangsstand */
+  lastDiff: { added: number; changed: number; removed: number } | null;
   practitionerId: string;
   date: IsoDate;
 }
@@ -76,6 +78,7 @@ export interface OutageView {
     imported: number;
     withWarnings: number;
     rejected: number;
+    lastDiff: OutageContext['lastDiff'];
   };
   progress: { total: number; decided: number; notified: number; synced: number; done: number };
   cases: CaseView[];
@@ -298,6 +301,7 @@ export function buildOutageView(ctx: OutageContext, log: AuditLog, now: UtcIso):
       imported: ctx.importReport.counts.imported,
       withWarnings: ctx.importReport.counts.imported_with_warnings,
       rejected: ctx.importReport.counts.rejected,
+      lastDiff: ctx.lastDiff,
     },
     progress: {
       total: cases.length,

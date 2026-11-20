@@ -8,26 +8,34 @@ import type { UtcIso } from './domain/types.js';
  * `notBefore`: Nach einem Neustart läuft die Uhr ab dem letzten Protokolleintrag weiter
  * statt wieder bei NOW zu beginnen. Zeitstempel springen so nicht zurück.
  *
- * `reset()`: Nur für den Testlauf. Stellt die Uhr wieder auf NOW (z. B. 07:40 Uhr),
- * sinnvoll nur zusammen mit einem geleerten Protokoll.
+ * Nur für den Testlauf:
+ * - `reset()` stellt die Uhr wieder auf NOW (z. B. 07:40 Uhr), sinnvoll mit geleertem Protokoll.
+ * - `set(at)` springt auf einen Zeitpunkt (z. B. 08:05 Uhr, um den nächsten Import auszulösen).
  */
 export interface Clock {
   now(): UtcIso;
   reset(): void;
+  set(at: UtcIso): void;
 }
 
 export function createClock(nowEnv: string | undefined, notBefore?: UtcIso): Clock {
-  if (!nowEnv) return { now: () => new Date().toISOString(), reset: () => {} };
+  if (!nowEnv) return { now: () => new Date().toISOString(), reset: () => {}, set: () => {} };
   const configured = Date.parse(nowEnv);
   if (Number.isNaN(configured)) throw new Error(`NOW ist kein gültiger Zeitpunkt: ${nowEnv}`);
 
   let start = Math.max(configured, notBefore ? Date.parse(notBefore) : 0);
   let startedAt = Date.now();
+  const jumpTo = (ms: number) => {
+    start = ms;
+    startedAt = Date.now();
+  };
   return {
     now: () => new Date(start + (Date.now() - startedAt)).toISOString(),
-    reset: () => {
-      start = configured;
-      startedAt = Date.now();
+    reset: () => jumpTo(configured),
+    set: (at) => {
+      const ms = Date.parse(at);
+      if (Number.isNaN(ms)) throw new Error(`Ungültiger Zeitpunkt: ${at}`);
+      jumpTo(ms);
     },
   };
 }

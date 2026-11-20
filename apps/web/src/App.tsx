@@ -83,6 +83,13 @@ export function App() {
         <p className="import-note">
           Termino-Export {time(view.importSummary.exportedAt)} Uhr: {view.importSummary.received} Termine,{' '}
           {view.importSummary.withWarnings} mit Hinweisen, {view.importSummary.rejected} abgelehnt.
+          {view.importSummary.lastDiff && (
+            <>
+              {' '}
+              Gegenüber vorher: {view.importSummary.lastDiff.added} neu, {view.importSummary.lastDiff.changed} geändert,{' '}
+              {view.importSummary.lastDiff.removed} entfernt.
+            </>
+          )}
           <br />
           Änderungen werden <strong>nicht automatisch</strong> in Termino übertragen.
         </p>

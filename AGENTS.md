@@ -89,6 +89,12 @@ Für jeden betroffenen Termin von Anna heute:
    nicht sicherheitsrelevant). Entscheidungen (umbuchen/absagen) bleiben append-only.
    Nichts ist vorausgewählt: Empfehlungen werden als Text gezeigt, nicht als markierter Button.
 
+**Termino-Import (simuliert):** Ein externer Job (in echt z. B. Zapier) liefert alle 5 Minuten den
+Vollexport an `POST /api/imports/termino`. Hier simuliert durch den Container `termino-sync`: Er liest
+`termino_export_YYYY-MM-DD_HHMM.json`, sobald die Szenario-Uhr diese Ortszeit erreicht. Kein neuer
+Export → Meldung nur auf Log-Level `debug`, nie im Frontend. Gleicher Export (`export_id`) → keine Änderung.
+Annahme: Vor dem ersten Export (Szenario-Start 07:40) gilt der früheste Export (08:00) als Ausgangsstand.
+
 Ersatzvergabe muss **global konsistent** sein: zwei von Annas Terminen dürfen nicht demselben freien Slot
 derselben Person zugewiesen werden. Lieber einfacher Greedy-Algorithmus nach Startzeit als cleverer Solver.
 

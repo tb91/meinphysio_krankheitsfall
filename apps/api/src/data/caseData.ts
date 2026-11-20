@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { type ExportFile, listExportFiles } from '../domain/exportSchedule.js';
 import type { MasterData, TerminoExport } from '../domain/types.js';
 
 function readJson<T>(dir: string, file: string): T {
@@ -16,14 +17,9 @@ export function loadMasterData(dir: string): MasterData {
   };
 }
 
-/** Neuester Termino-Export im Verzeichnis (Dateiname enthält Datum und Uhrzeit). */
-export function latestExportFile(dir: string): string {
-  const files = readdirSync(dir)
-    .filter((f) => /^termino_export_.*\.json$/.test(f))
-    .sort();
-  const latest = files.at(-1);
-  if (!latest) throw new Error(`Kein Termino-Export in ${dir} gefunden`);
-  return latest;
+/** Termino-Exporte im Verzeichnis, chronologisch nach Zeitpunkt im Dateinamen. */
+export function exportFilesIn(dir: string): ExportFile[] {
+  return listExportFiles(readdirSync(dir));
 }
 
 /** Roh eingelesen; validiert wird im Import (processExport). */
