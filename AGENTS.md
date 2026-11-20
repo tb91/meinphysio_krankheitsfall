@@ -114,6 +114,7 @@ Konventionen:
   Mandantenfähigkeit gehört in `ARCHITECTURE.md`, nicht in den Code.
 - Nach Änderungen: `docker compose up` muss weiterhin aus frischem Zustand funktionieren.
 - Annahme: Wir befinden uns in einer getrennten Umgebung. Kein Zugriff aufs Produktionssystem -> Du darfst die Datenbank frei löschen/neu erstellen, hinzufügen ohne Rückfragen.
+- Annahme: ich gehe davon aus, dass es nur eine rezeption gibt, also eine Person die zeitgleich daran arbeitet.
 
 ## 7. Abgabe-Artefakte (im Blick behalten)
 
