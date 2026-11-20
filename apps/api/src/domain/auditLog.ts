@@ -137,11 +137,49 @@ export function recordRebooking(log: AuditLog, input: RebookingInput): AuditLog 
   });
 }
 
-/** Verlauf eines Termins, chronologisch (bei gleichem Zeitpunkt in Eintragsreihenfolge). */
+const CHANNEL_LABEL = { phone: 'per Telefon', sms: 'per SMS', email: 'per E-Mail' } as const;
+
+export interface NotificationInput {
+  appointment: TerminoAppointment;
+  actor: Actor;
+  at: UtcIso;
+  channel: keyof typeof CHANNEL_LABEL;
+}
+
+/** Nichts wird versendet: der Empfang bestätigt, dass er informiert hat. */
+export function recordNotification(log: AuditLog, input: NotificationInput): AuditLog {
+  validate(input.actor, input.at);
+  const base = baseEntry(input);
+  return append(log, {
+    ...base,
+    action: 'patient_notified',
+    details: { channel: input.channel },
+    message: `${localTime(input.at)} Uhr: ${base.patientName} wurde von ${actorLabel(input.actor)} ${CHANNEL_LABEL[input.channel]} informiert.`,
+  });
+}
+
+export interface TerminoSyncInput {
+  appointment: TerminoAppointment;
+  actor: Actor;
+  at: UtcIso;
+}
+
+/** Termino hat keine Schreib-API: der Empfang bestätigt, dass die Änderung dort eingetragen ist. */
+export function recordTerminoSync(log: AuditLog, input: TerminoSyncInput): AuditLog {
+  validate(input.actor, input.at);
+  const base = baseEntry(input);
+  return append(log, {
+    ...base,
+    action: 'termino_synced',
+    details: {},
+    message: `${localTime(input.at)} Uhr: Änderung für ${base.patientName} wurde von ${actorLabel(input.actor)} in Termino eingetragen.`,
+  });
+}
+
+/**
+ * Verlauf eines Termins in Eintragsreihenfolge. Bewusst nicht nach Zeitstempel sortiert:
+ * das Log ist append-only, die Reihenfolge ist verlässlicher als Uhren.
+ */
 export function entriesForAppointment(log: AuditLog, appointmentId: string): AuditEntry[] {
-  return log.entries
-    .filter((e) => e.appointmentId === appointmentId)
-    .map((e, i) => ({ e, i }))
-    .sort((x, y) => Date.parse(x.e.at) - Date.parse(y.e.at) || x.i - y.i)
-    .map(({ e }) => e);
+  return log.entries.filter((e) => e.appointmentId === appointmentId);
 }
