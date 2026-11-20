@@ -369,16 +369,44 @@ export function cancelCommand(
   );
 }
 
+/**
+ * Änderung am Protokoll. Bestätigungen sind umschaltbar: ein Klick legt einen Eintrag an,
+ * ein zweiter entfernt ihn wieder. Ein Kanalwechsel ersetzt den bisherigen Eintrag.
+ * So entsteht pro Fall höchstens ein gültiger "informiert"- und "in Termino"-Eintrag.
+ */
+export interface LogChange {
+  add: AuditEntry | null;
+  remove: string[];
+}
+
+const NO_CHANGE: LogChange = { add: null, remove: [] };
+
+function requireDecidedCase(ctx: OutageContext, d: Derived, appointmentId: string, message: string) {
+  const appt = requireCase(ctx, d, appointmentId);
+  const state = d.states.get(appt.id)!;
+  if (!state.decision) throw new CommandError(409, message);
+  return { appt, state };
+}
+
 export function notifyCommand(
   ctx: OutageContext,
   log: AuditLog,
   now: UtcIso,
   input: { appointmentId: string; actorName: string; channel: ContactChannel },
-): AuditEntry {
+): LogChange {
   const d = derive(ctx, log);
-  const appt = requireCase(ctx, d, input.appointmentId);
-  if (!d.states.get(appt.id)?.decision) throw new CommandError(409, 'Erst entscheiden, dann informieren.');
-  return lastEntry(recordNotification(log, { appointment: appt, actor: reception(input.actorName), at: now, channel: input.channel }));
+  const { appt, state } = requireDecidedCase(ctx, d, input.appointmentId, 'Erst entscheiden, dann informieren.');
+  if (state.notifiedVia === input.channel) return NO_CHANGE;
+  return {
+    add: lastEntry(recordNotification(log, { appointment: appt, actor: reception(input.actorName), at: now, channel: input.channel })),
+    remove: state.notificationEntryId ? [state.notificationEntryId] : [],
+  };
+}
+
+export function withdrawNotificationCommand(ctx: OutageContext, log: AuditLog, input: { appointmentId: string }): LogChange {
+  const d = derive(ctx, log);
+  const state = d.states.get(requireCase(ctx, d, input.appointmentId).id)!;
+  return state.notificationEntryId ? { add: null, remove: [state.notificationEntryId] } : NO_CHANGE;
 }
 
 export function terminoSyncCommand(
@@ -386,9 +414,15 @@ export function terminoSyncCommand(
   log: AuditLog,
   now: UtcIso,
   input: { appointmentId: string; actorName: string },
-): AuditEntry {
+): LogChange {
   const d = derive(ctx, log);
-  const appt = requireCase(ctx, d, input.appointmentId);
-  if (!d.states.get(appt.id)?.decision) throw new CommandError(409, 'Es gibt noch keine Entscheidung zum Nachtragen.');
-  return lastEntry(recordTerminoSync(log, { appointment: appt, actor: reception(input.actorName), at: now }));
+  const { appt, state } = requireDecidedCase(ctx, d, input.appointmentId, 'Es gibt noch keine Entscheidung zum Nachtragen.');
+  if (state.terminoSynced) return NO_CHANGE;
+  return { add: lastEntry(recordTerminoSync(log, { appointment: appt, actor: reception(input.actorName), at: now })), remove: [] };
+}
+
+export function withdrawTerminoSyncCommand(ctx: OutageContext, log: AuditLog, input: { appointmentId: string }): LogChange {
+  const d = derive(ctx, log);
+  const state = d.states.get(requireCase(ctx, d, input.appointmentId).id)!;
+  return state.terminoSyncEntryId ? { add: null, remove: [state.terminoSyncEntryId] } : NO_CHANGE;
 }

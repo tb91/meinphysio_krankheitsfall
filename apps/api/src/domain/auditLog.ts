@@ -4,7 +4,9 @@ import type { TerminoAppointment, UtcIso } from './types.js';
 
 /**
  * Protokoll aller Entscheidungen: wer hat wann was mit welchem Termin gemacht.
- * Append-only: Einträge werden nie geändert oder gelöscht, Korrekturen sind neue Einträge.
+ * Entscheidungen (umbuchen, absagen) sind append-only: Korrekturen sind neue Einträge.
+ * Ausnahme: Die Bestätigungen "informiert" und "in Termino" kann der Empfang zurücknehmen,
+ * dann wird der Eintrag entfernt statt ein Gegeneintrag geschrieben (siehe caseState.ts).
  */
 export type AuditAction =
   | 'appointment_cancelled'

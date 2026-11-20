@@ -4,14 +4,25 @@ import {
   buildOutageView,
   cancelCommand,
   CommandError,
+  type LogChange,
   notifyCommand,
   type OutageContext,
   rebookCommand,
   terminoSyncCommand,
+  withdrawNotificationCommand,
+  withdrawTerminoSyncCommand,
 } from './app/outage.js';
 import { createClock } from './clock.js';
 import { latestExportFile, loadMasterData, readExport } from './data/caseData.js';
-import { appendAuditEntry, createPool, loadAuditLog, migrate, resetAuditLog, withDecisionLock } from './db.js';
+import {
+  appendAuditEntry,
+  createPool,
+  deleteAuditEntries,
+  loadAuditLog,
+  migrate,
+  resetAuditLog,
+  withDecisionLock,
+} from './db.js';
 import { type AuditEntry, type AuditLog, InvalidAuditEntryError } from './domain/auditLog.js';
 import { processExport } from './domain/importer.js';
 import { localDate } from './domain/time.js';
@@ -49,6 +60,9 @@ app.setErrorHandler((err, _req, reply) => {
   if (err instanceof CommandError) return reply.status(err.status).send({ error: err.message });
   if (err instanceof InvalidAuditEntryError) return reply.status(400).send({ error: err.message });
   if (err instanceof z.ZodError) return reply.status(400).send({ error: err.issues.map((i) => i.message).join('; ') });
+  // Fastify-eigene Client-Fehler (z. B. leerer JSON-Body) nicht als 500 ausgeben.
+  const status = (err as { statusCode?: number }).statusCode;
+  if (status && status >= 400 && status < 500) return reply.status(status).send({ error: (err as Error).message });
   app.log.error(err);
   return reply.status(500).send({ error: 'Interner Fehler' });
 });
@@ -68,15 +82,22 @@ app.get('/api/audit', async () => {
 const actorName = z.string().trim().min(1, 'Bitte Namen am Empfang angeben');
 const params = z.object({ id: z.string().min(1) });
 
-type Command = (log: AuditLog, now: UtcIso) => AuditEntry;
+type Command = (log: AuditLog, now: UtcIso) => LogChange | AuditEntry;
 
-/** Jede Entscheidung: Log lesen, prüfen, Eintrag anhängen, alles unter einem Lock. */
-async function decide(command: Command): Promise<AuditEntry> {
+/** Jede Änderung: Log lesen, prüfen, Einträge entfernen/anhängen, alles unter einem Lock. */
+async function decide(command: Command): Promise<LogChange> {
   return withDecisionLock(pool, async (client, log) => {
-    const entry = command(log, clock.now());
-    await appendAuditEntry(client, entry);
-    app.log.info({ action: entry.action, appointmentId: entry.appointmentId, actor: entry.actor.name }, entry.message);
-    return entry;
+    const result = command(log, clock.now());
+    const change: LogChange = 'remove' in result ? result : { add: result, remove: [] };
+    if (change.remove.length > 0) {
+      await deleteAuditEntries(client, change.remove);
+      app.log.info({ removed: change.remove }, 'Bestätigung zurückgenommen');
+    }
+    if (change.add) {
+      await appendAuditEntry(client, change.add);
+      app.log.info({ action: change.add.action, appointmentId: change.add.appointmentId, actor: change.add.actor.name }, change.add.message);
+    }
+    return change;
   });
 }
 
@@ -98,10 +119,20 @@ app.post('/api/cases/:id/notify', async (req) => {
   return decide((log, now) => notifyCommand(ctx, log, now, { appointmentId: id, ...body }));
 });
 
+app.delete('/api/cases/:id/notify', async (req) => {
+  const { id } = params.parse(req.params);
+  return decide((log) => withdrawNotificationCommand(ctx, log, { appointmentId: id }));
+});
+
 app.post('/api/cases/:id/termino-synced', async (req) => {
   const { id } = params.parse(req.params);
   const body = z.object({ actorName }).parse(req.body);
   return decide((log, now) => terminoSyncCommand(ctx, log, now, { appointmentId: id, ...body }));
+});
+
+app.delete('/api/cases/:id/termino-synced', async (req) => {
+  const { id } = params.parse(req.params);
+  return decide((log) => withdrawTerminoSyncCommand(ctx, log, { appointmentId: id }));
 });
 
 /** Nur für Demo/Video: Protokoll leeren. Keine Produktivfunktion. */

@@ -3,7 +3,8 @@ import type { AuditEntry, AuditLog } from './domain/auditLog.js';
 
 /**
  * Persistenz: das Audit-Log ist die einzige Quelle der Wahrheit für Entscheidungen.
- * Fallstatus und Belegung werden daraus abgeleitet. Append-only, keine Updates.
+ * Fallstatus und Belegung werden daraus abgeleitet. Keine Updates; gelöscht werden nur
+ * zurückgenommene Bestätigungen (informiert / in Termino).
  */
 export function createPool(connectionString: string | undefined): pg.Pool {
   const pool = new pg.Pool({ connectionString });
@@ -85,6 +86,15 @@ export async function withDecisionLock<T>(
   } finally {
     client.release();
   }
+}
+
+/** Nur für zurückgenommene Bestätigungen (informiert / in Termino), nie für Entscheidungen. */
+export async function deleteAuditEntries(db: Queryable, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.query(
+    `delete from audit_entries where id = any($1::uuid[]) and action in ('patient_notified', 'termino_synced')`,
+    [ids],
+  );
 }
 
 export async function resetAuditLog(pool: pg.Pool): Promise<void> {

@@ -78,6 +78,10 @@ Für jeden betroffenen Termin von Anna heute:
 4. **Kommunikation:** Kanal nach Dringlichkeit (Telefon bei Start < ~2 h, sonst SMS/E-Mail) und verfügbaren
    Kontaktdaten; Textvorschlag generieren. Nichts wird tatsächlich versendet, nur vorbereitet und als erledigt markiert.
 5. **Status je Fall:** offen → entschieden → informiert → in Termino nachgezogen.
+   Die Bestätigungen "informiert" und "in Termino" sind Umschalter: erst ein Klick markiert sie,
+   ein erneuter Klick nimmt sie zurück und entfernt den Protokolleintrag (Produktentscheidung,
+   nicht sicherheitsrelevant). Entscheidungen (umbuchen/absagen) bleiben append-only.
+   Nichts ist vorausgewählt: Empfehlungen werden als Text gezeigt, nicht als markierter Button.
 
 Ersatzvergabe muss **global konsistent** sein: zwei von Annas Terminen dürfen nicht demselben freien Slot
 derselben Person zugewiesen werden. Lieber einfacher Greedy-Algorithmus nach Startzeit als cleverer Solver.

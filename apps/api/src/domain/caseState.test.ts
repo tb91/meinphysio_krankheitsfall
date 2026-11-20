@@ -41,6 +41,19 @@ describe('deriveCaseState', () => {
     expect(deriveCaseState(log.entries).notifiedVia).toBe('phone');
   });
 
+  it('liefert die IDs der gültigen Bestätigungen, damit sie zurückgenommen werden können', () => {
+    let log = recordCancellation(createAuditLog(), { appointment: appt, locationName: 'Mitte', actor: lisa, at: '2026-09-07T05:41:00Z', reason: 'x' });
+    log = recordNotification(log, { appointment: appt, actor: lisa, at: '2026-09-07T05:42:00Z', channel: 'phone' });
+    log = recordTerminoSync(log, { appointment: appt, actor: lisa, at: '2026-09-07T05:43:00Z' });
+    const state = deriveCaseState(log.entries);
+    expect(state.notificationEntryId).toBe(log.entries[1]!.id);
+    expect(state.terminoSyncEntryId).toBe(log.entries[2]!.id);
+
+    // Eintrag entfernt (zurückgenommen) → wieder offen
+    const withoutNotification = log.entries.filter((e) => e.id !== state.notificationEntryId);
+    expect(deriveCaseState(withoutNotification)).toMatchObject({ notifiedVia: null, notificationEntryId: null, status: 'in_progress' });
+  });
+
   it('ignoriert "informiert" ohne vorherige Entscheidung', () => {
     const log = recordNotification(createAuditLog(), { appointment: appt, actor: lisa, at: '2026-09-07T05:42:00Z', channel: 'sms' });
     expect(deriveCaseState(log.entries)).toMatchObject({ status: 'open', notifiedVia: null });
