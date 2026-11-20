@@ -75,8 +75,14 @@ Für jeden betroffenen Termin von Anna heute:
 2. **Sonst Umbuchung vorschlagen:** nächste passende freie Slots, unter Beachtung der Verordnungsfristen
    und Frequenz.
 3. **Sonst Absage** mit klarer Begründung.
-4. **Kommunikation:** Kanal nach Dringlichkeit (Telefon bei Start < ~2 h, sonst SMS/E-Mail) und verfügbaren
-   Kontaktdaten; Textvorschlag generieren. Nichts wird tatsächlich versendet, nur vorbereitet und als erledigt markiert.
+4. **Kommunikation:** Kanal nach Dringlichkeit und verfügbaren Kontaktdaten; Textvorschlag generieren.
+   Nichts wird tatsächlich versendet, nur vorbereitet und als erledigt markiert.
+   - Termin in ≤ 2 h: erst Anruf, bei "nicht erreicht" SMS + E-Mail. Termin in > 2 h: SMS + E-Mail.
+   - Schriftlich heißt immer SMS UND E-Mail (soweit vorhanden), nicht entweder/oder.
+     SMS auch an Festnetznummern (viele Anbieter lesen sie vor).
+   - Informiert = telefonisch erreicht ODER alle verfügbaren schriftlichen Kanäle bestätigt.
+   - Anruf in zwei Schritten: "Angerufen" → "Erreicht" (= informiert) oder "Nicht erreicht".
+     Ein nicht erreichter Anruf wird immer protokolliert und nie entfernt; danach ist SMS + E-Mail dran.
 5. **Status je Fall:** offen → entschieden → informiert → in Termino nachgezogen.
    Die Bestätigungen "informiert" und "in Termino" sind Umschalter: erst ein Klick markiert sie,
    ein erneuter Klick nimmt sie zurück und entfernt den Protokolleintrag (Produktentscheidung,

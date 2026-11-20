@@ -53,7 +53,7 @@ function Steps({ c }: { c: CaseView }) {
       <span className={`step ${d ? 'ok' : ''}`} title="Entscheidung">
         {d ? (d.kind === 'cancelled' ? 'Abgesagt' : 'Umgebucht') : 'Offen'}
       </span>
-      <span className={`dot ${c.state.notifiedVia ? 'ok' : ''}`} title="Patient:in informiert" />
+      <span className={`dot ${c.state.informed ? 'ok' : ''}`} title="Patient:in informiert" />
       <span className={`dot ${c.state.terminoSynced ? 'ok' : ''}`} title="In Termino eingetragen" />
     </span>
   );

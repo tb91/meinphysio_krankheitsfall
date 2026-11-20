@@ -3,12 +3,13 @@ import {
   type AuditEntry,
   type AuditLog,
   recordCancellation,
+  recordFailedCallAttempt,
   recordNotification,
   recordRebooking,
   recordTerminoSync,
 } from '../domain/auditLog.js';
 import { type CaseState, type ContactChannel, deriveCaseState } from '../domain/caseState.js';
-import { composeMessage, type ContactRecommendation, recommendContact } from '../domain/contact.js';
+import { composeMessage, type ContactRecommendation, recommendContact, writtenChannels } from '../domain/contact.js';
 import type { ImportReport } from '../domain/importer.js';
 import { buildPatientIndex, matchPatient, type PatientIndex } from '../domain/patientMatching.js';
 import { serviceCodeFor } from '../domain/services.js';
@@ -110,7 +111,14 @@ function derive(ctx: OutageContext, log: AuditLog): Derived {
     entries.set(e.appointmentId, list);
   }
 
-  const states = new Map(worklist.map((w) => [w.appointmentId, deriveCaseState(entries.get(w.appointmentId) ?? [])]));
+  const patientIndex = buildPatientIndex(ctx.master.patienten);
+  const contacts = new Map(worklist.map((w) => [w.appointmentId, contactOf(byId.get(w.appointmentId)!, patientIndex)]));
+  const states = new Map(
+    worklist.map((w) => {
+      const c = contacts.get(w.appointmentId)!;
+      return [w.appointmentId, deriveCaseState(entries.get(w.appointmentId) ?? [], writtenChannels(c.phone, c.email))];
+    }),
+  );
 
   // Belegung = Termino + aktuell gültige Umbuchungen (abgesagte/geänderte geben frei).
   let ledger = createSlotLedger(ctx.appointments);
@@ -132,8 +140,18 @@ function derive(ctx: OutageContext, log: AuditLog): Derived {
     states,
     entries,
     ledger,
-    patientIndex: buildPatientIndex(ctx.master.patienten),
+    patientIndex,
     praxisByLocation: new Map(ctx.master.praxen.map((p) => [p.termino_location_id, p])),
+  };
+}
+
+/** Kontaktdaten: aus Termino, ergänzt um sicher verknüpfte Stammdaten. */
+function contactOf(appt: TerminoAppointment, index: PatientIndex): { phone: string | null; email: string | null } {
+  const match = matchPatient(appt.patient, index);
+  const linked = match.kind === 'linked' ? match.patient : null;
+  return {
+    phone: appt.patient?.phone || linked?.telefon || null,
+    email: appt.patient?.email || linked?.email || null,
   };
 }
 
@@ -184,8 +202,7 @@ function buildCase(ctx: OutageContext, d: Derived, item: WorklistItem, now: UtcI
   if (match.kind === 'unknown') warnings.push('Kein Stammdatensatz gefunden, daher auch keine Verordnung prüfbar.');
   if (!code) warnings.push(`Leistung "${appt.service}" ist keinem Heilmittel zugeordnet.`);
 
-  const phone = appt.patient?.phone || linked?.telefon || null;
-  const email = appt.patient?.email || linked?.email || null;
+  const { phone, email } = contactOf(appt, d.patientIndex);
   if (!phone) warnings.push('Keine Telefonnummer hinterlegt.');
 
   const sameDay = d.worklist.filter((w) => w.terminoPatientId && w.terminoPatientId === item.terminoPatientId);
@@ -256,7 +273,7 @@ function buildCase(ctx: OutageContext, d: Derived, item: WorklistItem, now: UtcI
           startDeadline: deadline,
         }
       : null,
-    contact: recommendContact({ startsAt: appt.starts_at, now, phone, email }),
+    contact: recommendContact({ startsAt: appt.starts_at, now, phone, email, failedCallAttempts: state.failedCallAttempts }),
     state,
     message,
     suggestions: suggestionsFor(ctx, d, appt, now, deadline),
@@ -285,7 +302,7 @@ export function buildOutageView(ctx: OutageContext, log: AuditLog, now: UtcIso):
     progress: {
       total: cases.length,
       decided: states.filter((s) => s.decision).length,
-      notified: states.filter((s) => s.notifiedVia).length,
+      notified: states.filter((s) => s.informed).length,
       synced: states.filter((s) => s.terminoSynced).length,
       done: states.filter((s) => s.status === 'done').length,
     },
@@ -396,17 +413,35 @@ export function notifyCommand(
 ): LogChange {
   const d = derive(ctx, log);
   const { appt, state } = requireDecidedCase(ctx, d, input.appointmentId, 'Erst entscheiden, dann informieren.');
-  if (state.notifiedVia === input.channel) return NO_CHANGE;
+  // Kanäle sind unabhängig (SMS und E-Mail werden beide verschickt): nur hinzufügen, nichts ersetzen.
+  if (state.notifiedChannels.includes(input.channel)) return NO_CHANGE;
   return {
     add: lastEntry(recordNotification(log, { appointment: appt, actor: reception(input.actorName), at: now, channel: input.channel })),
-    remove: state.notificationEntryId ? [state.notificationEntryId] : [],
+    remove: [],
   };
 }
 
-export function withdrawNotificationCommand(ctx: OutageContext, log: AuditLog, input: { appointmentId: string }): LogChange {
+export function withdrawNotificationCommand(
+  ctx: OutageContext,
+  log: AuditLog,
+  input: { appointmentId: string; channel: ContactChannel },
+): LogChange {
   const d = derive(ctx, log);
   const state = d.states.get(requireCase(ctx, d, input.appointmentId).id)!;
-  return state.notificationEntryId ? { add: null, remove: [state.notificationEntryId] } : NO_CHANGE;
+  const id = state.notificationEntryIds[input.channel];
+  return id ? { add: null, remove: [id] } : NO_CHANGE;
+}
+
+/** Angerufen, nicht erreicht: wird immer protokolliert und nie entfernt. */
+export function failedCallCommand(
+  ctx: OutageContext,
+  log: AuditLog,
+  now: UtcIso,
+  input: { appointmentId: string; actorName: string },
+): LogChange {
+  const d = derive(ctx, log);
+  const { appt } = requireDecidedCase(ctx, d, input.appointmentId, 'Erst entscheiden, dann anrufen.');
+  return { add: lastEntry(recordFailedCallAttempt(log, { appointment: appt, actor: reception(input.actorName), at: now })), remove: [] };
 }
 
 export function terminoSyncCommand(

@@ -3,21 +3,29 @@ import { localDayTime, minutesBetween } from './time.js';
 import type { UtcIso } from './types.js';
 
 /**
- * Welcher Kanal für welche Patient:in? Entscheidend ist, ob die Nachricht rechtzeitig ankommt.
- * - Termin in ≤ 2 h: anrufen. Eine E-Mail wird so kurzfristig oft nicht gelesen.
- * - Später: SMS an Mobilnummern, sonst Anruf; ohne Telefon E-Mail.
+ * Wie wird eine Patient:in informiert? Entscheidend ist, ob die Nachricht rechtzeitig ankommt.
+ * - Termin in ≤ 2 h: erst Anruf, bei "nicht erreicht" schriftlich.
+ *   Eine E-Mail allein wird so kurzfristig oft nicht gelesen.
+ * - Termin in > 2 h: direkt schriftlich.
+ * Schriftlich heißt immer SMS UND E-Mail (soweit vorhanden), nicht entweder/oder.
+ * SMS auch an Festnetznummern: viele Anbieter lesen sie dort vor.
  */
 export const URGENT_THRESHOLD_MIN = 120;
 
 export interface ContactRecommendation {
-  channel: ContactChannel | null;
+  /** Stufen in Prioritätsreihenfolge, z. B. [['phone'], ['sms', 'email']] */
+  steps: ContactChannel[][];
+  /** Was jetzt zu tun ist (eine Stufe; mehrere Kanäle = alle davon) */
+  next: ContactChannel[];
+  /** Schriftliche Kanäle, die für diese Patient:in verfügbar sind */
+  written: ContactChannel[];
   urgent: boolean;
   minutesUntilStart: number;
   note: string | null;
 }
 
-export function isMobileNumber(phone: string): boolean {
-  return /^\+49\s?1[5-7]/.test(phone.trim()) || /^01[5-7]/.test(phone.trim());
+export function writtenChannels(phone: string | null, email: string | null): ContactChannel[] {
+  return [...(phone ? (['sms'] as const) : []), ...(email ? (['email'] as const) : [])];
 }
 
 export function recommendContact(input: {
@@ -25,31 +33,30 @@ export function recommendContact(input: {
   now: UtcIso;
   phone: string | null;
   email: string | null;
+  failedCallAttempts?: number;
 }): ContactRecommendation {
   const minutesUntilStart = minutesBetween(input.now, input.startsAt);
   const urgent = minutesUntilStart <= URGENT_THRESHOLD_MIN;
   const { phone, email } = input;
+  const failed = input.failedCallAttempts ?? 0;
+  const written = writtenChannels(phone, email);
 
-  if (urgent) {
-    if (phone) return { channel: 'phone', urgent, minutesUntilStart, note: null };
-    if (email) {
-      return {
-        channel: 'email',
-        urgent,
-        minutesUntilStart,
-        note: 'Keine Telefonnummer. Eine E-Mail kommt so kurzfristig evtl. nicht an: Patient:in am Empfang abfangen.',
-      };
-    }
-    return { channel: null, urgent, minutesUntilStart, note: 'Keine Kontaktdaten: Patient:in am Empfang abfangen.' };
+  const steps = [urgent && phone ? (['phone'] as ContactChannel[]) : [], written].filter((s) => s.length > 0);
+  const next = (failed > 0 ? steps.filter((s) => !s.includes('phone')) : steps)[0] ?? [];
+
+  let note: string | null = null;
+  if (!phone && !email) note = 'Keine Kontaktdaten: Patient:in am Empfang abfangen.';
+  else if (urgent && !phone) {
+    note = 'Keine Telefonnummer. Eine E-Mail kommt so kurzfristig evtl. nicht an: Patient:in am Empfang abfangen.';
+  } else if (failed > 0) {
+    note = `Telefonisch ${failed}× nicht erreicht.${next.length ? ` Weiter per ${next.map(label).join(' + ')}.` : ''}`;
   }
 
-  if (phone) {
-    return isMobileNumber(phone)
-      ? { channel: 'sms', urgent, minutesUntilStart, note: null }
-      : { channel: 'phone', urgent, minutesUntilStart, note: 'Festnetznummer, daher Anruf statt SMS.' };
-  }
-  if (email) return { channel: 'email', urgent, minutesUntilStart, note: null };
-  return { channel: null, urgent, minutesUntilStart, note: 'Keine Kontaktdaten hinterlegt.' };
+  return { steps, next, written, urgent, minutesUntilStart, note };
+}
+
+function label(ch: ContactChannel): string {
+  return ch === 'phone' ? 'Anruf' : ch === 'sms' ? 'SMS' : 'E-Mail';
 }
 
 /**

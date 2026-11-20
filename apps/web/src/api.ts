@@ -16,7 +16,7 @@ export interface AuditEntry {
   id: string;
   at: string;
   actor: { kind: 'reception' | 'system'; name: string };
-  action: 'appointment_cancelled' | 'appointment_rebooked' | 'patient_notified' | 'termino_synced';
+  action: 'appointment_cancelled' | 'appointment_rebooked' | 'patient_notified' | 'call_attempt_failed' | 'termino_synced';
   appointmentId: string;
   patientName: string;
   message: string;
@@ -57,14 +57,26 @@ export interface CaseView {
     frequenzProWoche: number;
     startDeadline: string | null;
   } | null;
-  contact: { channel: ContactChannel | null; urgent: boolean; minutesUntilStart: number; note: string | null };
+  contact: {
+    /** Stufen in Prioritätsreihenfolge, z. B. [['phone'], ['sms', 'email']] */
+    steps: ContactChannel[][];
+    /** Jetzt zu tun (alle Kanäle der Stufe) */
+    next: ContactChannel[];
+    written: ContactChannel[];
+    urgent: boolean;
+    minutesUntilStart: number;
+    note: string | null;
+  };
   state: {
     status: 'open' | 'in_progress' | 'done';
     decision: Decision | null;
-    notifiedVia: ContactChannel | null;
+    /** Bestätigte Kanäle (phone = telefonisch erreicht) */
+    notifiedChannels: ContactChannel[];
+    informed: boolean;
+    notificationEntryIds: Partial<Record<ContactChannel, string>>;
     terminoSynced: boolean;
-    notificationEntryId: string | null;
     terminoSyncEntryId: string | null;
+    failedCallAttempts: number;
   };
   message: string | null;
   suggestions: Suggestion[];
@@ -108,7 +120,10 @@ export const api = {
     request<AuditEntry>(`/api/cases/${id}/cancel`, { method: 'POST', body: JSON.stringify(body) }),
   notify: (id: string, body: { actorName: string; channel: ContactChannel }) =>
     request<unknown>(`/api/cases/${id}/notify`, { method: 'POST', body: JSON.stringify(body) }),
-  withdrawNotify: (id: string) => request<unknown>(`/api/cases/${id}/notify`, { method: 'DELETE' }),
+  withdrawNotify: (id: string, channel: ContactChannel) =>
+    request<unknown>(`/api/cases/${id}/notify/${channel}`, { method: 'DELETE' }),
+  callFailed: (id: string, body: { actorName: string }) =>
+    request<unknown>(`/api/cases/${id}/call-failed`, { method: 'POST', body: JSON.stringify(body) }),
   terminoSynced: (id: string, body: { actorName: string }) =>
     request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'POST', body: JSON.stringify(body) }),
   withdrawTerminoSynced: (id: string) => request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'DELETE' }),

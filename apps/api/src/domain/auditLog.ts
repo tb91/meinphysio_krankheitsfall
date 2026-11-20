@@ -12,6 +12,8 @@ export type AuditAction =
   | 'appointment_cancelled'
   | 'appointment_rebooked'
   | 'patient_notified'
+  /** Anrufversuch ohne Erfolg. Bleibt immer im Protokoll, auch wenn danach per SMS/E-Mail informiert wird. */
+  | 'call_attempt_failed'
   | 'termino_synced';
 
 export interface Actor {
@@ -157,6 +159,24 @@ export function recordNotification(log: AuditLog, input: NotificationInput): Aud
     action: 'patient_notified',
     details: { channel: input.channel },
     message: `${localTime(input.at)} Uhr: ${base.patientName} wurde von ${actorLabel(input.actor)} ${CHANNEL_LABEL[input.channel]} informiert.`,
+  });
+}
+
+export interface CallAttemptInput {
+  appointment: TerminoAppointment;
+  actor: Actor;
+  at: UtcIso;
+}
+
+/** Anruf ohne Erfolg. Nicht zurücknehmbar: der Versuch hat stattgefunden. */
+export function recordFailedCallAttempt(log: AuditLog, input: CallAttemptInput): AuditLog {
+  validate(input.actor, input.at);
+  const base = baseEntry(input);
+  return append(log, {
+    ...base,
+    action: 'call_attempt_failed',
+    details: {},
+    message: `${localTime(input.at)} Uhr: ${actorLabel(input.actor)} hat ${base.patientName} angerufen, nicht erreicht.`,
   });
 }
 

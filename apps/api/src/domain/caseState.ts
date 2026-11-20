@@ -8,9 +8,12 @@ import type { UtcIso } from './types.js';
  * Ändert sich die Entscheidung, gelten Information und Termino-Abgleich als offen,
  * denn die Patient:in kennt dann noch den alten Stand.
  *
- * Die Bestätigungen "informiert" und "in Termino" sind umschaltbar: Der Empfang kann einen
+ * Informiert gilt eine Patient:in, wenn sie telefonisch erreicht wurde ODER alle verfügbaren
+ * schriftlichen Kanäle (SMS und E-Mail) bestätigt sind.
+ *
+ * Die Bestätigungen je Kanal und "in Termino" sind umschaltbar: Der Empfang kann einen
  * Klick zurücknehmen, dann wird der Eintrag entfernt (Produktentscheidung, nicht
- * sicherheitsrelevant). Dafür liefert der Zustand die ID des jeweils gültigen Eintrags.
+ * sicherheitsrelevant). Dafür liefert der Zustand die IDs der gültigen Einträge.
  */
 export type Decision =
   | { kind: 'cancelled'; reason: string; at: UtcIso; by: string }
@@ -22,22 +25,47 @@ export type Decision =
     };
 
 export type ContactChannel = 'phone' | 'sms' | 'email';
+export const CHANNELS: readonly ContactChannel[] = ['phone', 'sms', 'email'];
 
 export interface CaseState {
   status: 'open' | 'in_progress' | 'done';
   decision: Decision | null;
-  notifiedVia: ContactChannel | null;
+  /** Bestätigte Kanäle seit der aktuellen Entscheidung (phone = telefonisch erreicht) */
+  notifiedChannels: ContactChannel[];
+  informed: boolean;
+  /** IDs der gültigen "informiert"-Einträge je Kanal, zum Zurücknehmen */
+  notificationEntryIds: Partial<Record<ContactChannel, string>>;
   terminoSynced: boolean;
-  /** ID des gültigen "informiert"-Eintrags, zum Zurücknehmen */
-  notificationEntryId: string | null;
   /** ID des gültigen "in Termino"-Eintrags, zum Zurücknehmen */
   terminoSyncEntryId: string | null;
+  /** Erfolglose Anrufversuche seit der aktuellen Entscheidung */
+  failedCallAttempts: number;
 }
 
-export function deriveCaseState(entries: readonly AuditEntry[]): CaseState {
+/** Telefonisch erreicht, oder alle verfügbaren schriftlichen Kanäle erledigt. */
+export function isInformed(notified: readonly ContactChannel[], writtenChannels: readonly ContactChannel[]): boolean {
+  if (notified.includes('phone')) return true;
+  return writtenChannels.length > 0 && writtenChannels.every((ch) => notified.includes(ch));
+}
+
+/**
+ * @param writtenChannels Für diese Patient:in verfügbare schriftliche Kanäle
+ *   (SMS nur mit Telefonnummer, E-Mail nur mit Adresse). Standard: beide.
+ */
+export function deriveCaseState(
+  entries: readonly AuditEntry[],
+  writtenChannels: readonly ContactChannel[] = ['sms', 'email'],
+): CaseState {
   let decision: Decision | null = null;
-  let notification: AuditEntry | null = null;
+  let notifications: Partial<Record<ContactChannel, AuditEntry>> = {};
   let terminoSync: AuditEntry | null = null;
+  let failedCallAttempts = 0;
+
+  const resetFollowUps = () => {
+    notifications = {};
+    terminoSync = null;
+    failedCallAttempts = 0;
+  };
 
   // Eintragsreihenfolge, nicht Zeitstempel: Uhren können springen
   // (Neustart, Zeitumstellung, abweichende Serveruhren).
@@ -45,16 +73,17 @@ export function deriveCaseState(entries: readonly AuditEntry[]): CaseState {
     switch (e.action) {
       case 'appointment_cancelled':
         decision = { kind: 'cancelled', reason: String(e.details.reason ?? ''), at: e.at, by: e.actor.name };
-        notification = null;
-        terminoSync = null;
+        resetFollowUps();
         break;
       case 'appointment_rebooked':
         decision = { kind: 'rebooked', at: e.at, by: e.actor.name, to: e.details.to as Extract<Decision, { kind: 'rebooked' }>['to'] };
-        notification = null;
-        terminoSync = null;
+        resetFollowUps();
         break;
       case 'patient_notified':
-        if (decision) notification = e;
+        if (decision) notifications[e.details.channel as ContactChannel] = e;
+        break;
+      case 'call_attempt_failed':
+        if (decision) failedCallAttempts += 1;
         break;
       case 'termino_synced':
         if (decision) terminoSync = e;
@@ -62,15 +91,19 @@ export function deriveCaseState(entries: readonly AuditEntry[]): CaseState {
     }
   }
 
-  const notifiedVia = (notification?.details.channel as ContactChannel | undefined) ?? null;
+  const notifiedChannels = CHANNELS.filter((ch) => notifications[ch]);
+  const informed = !!decision && isInformed(notifiedChannels, writtenChannels);
   const terminoSynced = terminoSync !== null;
-  const status = !decision ? 'open' : notifiedVia && terminoSynced ? 'done' : 'in_progress';
+  const status = !decision ? 'open' : informed && terminoSynced ? 'done' : 'in_progress';
+
   return {
     status,
     decision,
-    notifiedVia,
+    notifiedChannels,
+    informed,
+    notificationEntryIds: Object.fromEntries(notifiedChannels.map((ch) => [ch, notifications[ch]!.id])),
     terminoSynced,
-    notificationEntryId: notification?.id ?? null,
-    terminoSyncEntryId: terminoSync?.id ?? null,
+    terminoSyncEntryId: (terminoSync as AuditEntry | null)?.id ?? null,
+    failedCallAttempts,
   };
 }

@@ -156,3 +156,12 @@ input {
   .import-note { grid-column: 1 / -1; }
   .facts { grid-template-columns: 1fr; }
 }
+
+/* Anruf-Button: "Angerufen" teilt sich in Erreicht | Nicht erreicht, gleiche Breite */
+.call-btn { min-width: 220px; }
+.call-btn.split { display: inline-flex; }
+.call-btn.split button { flex: 1; border-radius: 0; background: white; }
+.call-btn.split .split-yes { border-radius: 8px 0 0 8px; color: var(--ok); border-color: var(--ok); }
+.call-btn.split .split-no { border-radius: 0 8px 8px 0; color: var(--urgent); border-color: var(--urgent); border-left: none; }
+.call-btn.split .split-yes:hover:not(:disabled) { background: var(--ok-soft); }
+.call-btn.split .split-no:hover:not(:disabled) { background: var(--urgent-soft); }

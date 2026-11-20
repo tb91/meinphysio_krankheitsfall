@@ -4,6 +4,7 @@ import {
   buildOutageView,
   cancelCommand,
   CommandError,
+  failedCallCommand,
   type LogChange,
   notifyCommand,
   type OutageContext,
@@ -119,9 +120,15 @@ app.post('/api/cases/:id/notify', async (req) => {
   return decide((log, now) => notifyCommand(ctx, log, now, { appointmentId: id, ...body }));
 });
 
-app.delete('/api/cases/:id/notify', async (req) => {
+app.post('/api/cases/:id/call-failed', async (req) => {
   const { id } = params.parse(req.params);
-  return decide((log) => withdrawNotificationCommand(ctx, log, { appointmentId: id }));
+  const body = z.object({ actorName }).parse(req.body);
+  return decide((log, now) => failedCallCommand(ctx, log, now, { appointmentId: id, ...body }));
+});
+
+app.delete('/api/cases/:id/notify/:channel', async (req) => {
+  const { id, channel } = params.extend({ channel: z.enum(['phone', 'sms', 'email']) }).parse(req.params);
+  return decide((log) => withdrawNotificationCommand(ctx, log, { appointmentId: id, channel }));
 });
 
 app.post('/api/cases/:id/termino-synced', async (req) => {

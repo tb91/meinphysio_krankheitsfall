@@ -22,11 +22,12 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
   // Umschalter: erneuter Klick auf die aktive Bestätigung nimmt sie zurück (Eintrag wird entfernt).
   const notify = useMutation({
     mutationFn: (channel: ContactChannel) =>
-      c.state.notifiedVia === channel
-        ? api.withdrawNotify(c.appointmentId)
+      c.state.notifiedChannels.includes(channel)
+        ? api.withdrawNotify(c.appointmentId, channel)
         : api.notify(c.appointmentId, { actorName, channel }),
     ...opts,
   });
+  const callFailed = useMutation({ mutationFn: () => api.callFailed(c.appointmentId, { actorName }), ...opts });
   const synced = useMutation({
     mutationFn: () =>
       c.state.terminoSynced
@@ -35,11 +36,12 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
     ...opts,
   });
 
-  const busy = rebook.isPending || cancel.isPending || notify.isPending || synced.isPending;
-  const error = rebook.error ?? cancel.error ?? notify.error ?? synced.error;
+  const busy = rebook.isPending || cancel.isPending || notify.isPending || callFailed.isPending || synced.isPending;
+  const error = rebook.error ?? cancel.error ?? notify.error ?? callFailed.error ?? synced.error;
   const noName = !actorName;
   const disabled = busy || noName;
   const d = c.state.decision;
+  const openWritten = c.contact.written.filter((ch) => !c.state.notifiedChannels.includes(ch));
   const showDecision = !d || editing;
 
   async function copyMessage() {
@@ -76,13 +78,14 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
             <br />
             E-Mail: {c.patient.email ?? <em>keine</em>}
           </p>
-          {c.contact.channel && (
+          {c.contact.steps.length > 0 && (
             <p className="recommend">
-              Empfehlung: <strong>{CHANNEL_LABEL[c.contact.channel]}</strong>
-              {c.contact.urgent && ' (Termin beginnt bald)'}
+              Reihenfolge: {c.contact.steps.map(stepLabel).join(' → ')}
+              <span className="muted"> {c.contact.urgent ? '(Termin in ≤ 2 h)' : '(Termin in > 2 h)'}</span>
             </p>
           )}
-          {c.contact.note && <p className="note">{c.contact.note}</p>}
+          {/* Hinweis zu Anrufversuchen steht direkt bei den Buttons in Schritt 2 */}
+          {c.contact.note && c.state.failedCallAttempts === 0 && <p className="note">{c.contact.note}</p>}
         </section>
         <section>
           <h3>Verordnung</h3>
@@ -175,7 +178,7 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
       {/* Schritt 2: Informieren */}
       <section className={`step-block ${d ? '' : 'locked'}`}>
         <h3>
-          <span className={`num ${c.state.notifiedVia ? 'ok' : ''}`}>2</span> Patient:in informieren
+          <span className={`num ${c.state.informed ? 'ok' : ''}`}>2</span> Patient:in informieren
         </h3>
         {c.message ? (
           <>
@@ -184,15 +187,27 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
               <button className="secondary" onClick={copyMessage}>
                 {copied ? 'Kopiert ✓' : 'Text kopieren'}
               </button>
-              {(['phone', 'sms', 'email'] as const).map((ch) => {
-                const active = c.state.notifiedVia === ch;
+              {channelOrder(c).map((ch) => {
+                const active = c.state.notifiedChannels.includes(ch);
+                const unavailable = ch === 'email' ? !c.patient.email : !c.patient.phone;
+                if (ch === 'phone') {
+                  return (
+                    <CallButton
+                      key={ch}
+                      reached={active}
+                      disabled={disabled || unavailable}
+                      onReached={() => notify.mutate('phone')}
+                      onNotReached={() => callFailed.mutate()}
+                      onWithdraw={() => notify.mutate('phone')}
+                    />
+                  );
+                }
                 return (
                   <button
                     key={ch}
                     className={active ? 'confirmed' : 'secondary'}
                     aria-pressed={active}
-                    title={active ? 'Erneut klicken, um zurückzunehmen' : undefined}
-                    disabled={disabled || (ch !== 'email' && !c.patient.phone) || (ch === 'email' && !c.patient.email)}
+                    disabled={disabled || unavailable}
                     onClick={() => notify.mutate(ch)}
                   >
                     {active && '✓ '}Per {CHANNEL_LABEL[ch]} informiert
@@ -200,8 +215,18 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
                 );
               })}
             </div>
+            {c.state.failedCallAttempts > 0 && (
+              <p className="note">
+                Telefonisch {c.state.failedCallAttempts}× nicht erreicht (bleibt im Protokoll).
+                {!c.state.informed && c.contact.next.length > 0 && ` Weiter per ${stepLabel(c.contact.next)}.`}
+              </p>
+            )}
+            {!c.state.informed && openWritten.length > 0 && openWritten.length < c.contact.written.length && (
+              <p className="note">Noch offen: {stepLabel(openWritten)}. Schriftlich immer über alle Kanäle informieren.</p>
+            )}
             <p className="muted small">
-              Es wird nichts automatisch versendet. Der Text ist ein Vorschlag. Erneuter Klick nimmt die Markierung zurück.
+              Es wird nichts automatisch versendet. Der Text ist ein Vorschlag. Erneuter Klick auf eine grüne Markierung nimmt sie
+              zurück.
             </p>
           </>
         ) : (
@@ -225,7 +250,6 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
               <button
                 className={c.state.terminoSynced ? 'confirmed' : 'secondary'}
                 aria-pressed={c.state.terminoSynced}
-                title={c.state.terminoSynced ? 'Erneut klicken, um zurückzunehmen' : undefined}
                 onClick={() => synced.mutate()}
                 disabled={disabled}
               >
@@ -261,5 +285,77 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
         </section>
       )}
     </article>
+  );
+}
+
+/** Kanäle in Prioritätsreihenfolge des Falls, nicht verfügbare hinten angehängt. */
+function channelOrder(c: CaseView): ContactChannel[] {
+  const all: ContactChannel[] = ['phone', 'sms', 'email'];
+  const prioritized = c.contact.steps.flat();
+  return [...prioritized, ...all.filter((ch) => !prioritized.includes(ch))];
+}
+
+/** z. B. ['sms', 'email'] → "SMS + E-Mail" */
+function stepLabel(step: ContactChannel[]): string {
+  return step.map((ch) => CHANNEL_LABEL[ch]).join(' + ');
+}
+
+/**
+ * Anruf in zwei Schritten: "Angerufen" → teilt sich in "Erreicht" | "Nicht erreicht".
+ * Erreicht = informiert per Anruf (grün, umschaltbar). Nicht erreicht = Versuch wird protokolliert,
+ * der Button steht danach wieder auf "Angerufen" für einen weiteren Versuch.
+ */
+function CallButton({
+  reached,
+  disabled,
+  onReached,
+  onNotReached,
+  onWithdraw,
+}: {
+  reached: boolean;
+  disabled: boolean;
+  onReached: () => void;
+  onNotReached: () => void;
+  onWithdraw: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+
+  if (reached) {
+    return (
+      <button className="call-btn confirmed" aria-pressed disabled={disabled} onClick={onWithdraw}>
+        ✓ Per Anruf erreicht
+      </button>
+    );
+  }
+  if (asking) {
+    return (
+      <span className="call-btn split" role="group" aria-label="Ergebnis des Anrufs">
+        <button
+          className="split-yes"
+          disabled={disabled}
+          onClick={() => {
+            setAsking(false);
+            onReached();
+          }}
+        >
+          Erreicht
+        </button>
+        <button
+          className="split-no"
+          disabled={disabled}
+          onClick={() => {
+            setAsking(false);
+            onNotReached();
+          }}
+        >
+          Nicht erreicht
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button className="call-btn secondary" disabled={disabled} onClick={() => setAsking(true)}>
+      Angerufen
+    </button>
   );
 }
