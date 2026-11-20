@@ -39,6 +39,8 @@ button {
 }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.secondary { background: white; color: var(--accent); }
+/* Vom Empfang bestätigt (umschaltbar) */
+button.confirmed { background: var(--ok); border-color: var(--ok); color: white; }
 button.danger { background: white; color: var(--urgent); border-color: var(--urgent); }
 button.link { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; }
 input {

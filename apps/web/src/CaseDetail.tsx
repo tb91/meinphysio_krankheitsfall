@@ -19,8 +19,21 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
 
   const rebook = useMutation({ mutationFn: (s: Suggestion) => api.rebook(c.appointmentId, { actorName, practitionerId: s.practitionerId, startsAt: s.startsAt }), ...opts });
   const cancel = useMutation({ mutationFn: () => api.cancel(c.appointmentId, { actorName, reason }), ...opts });
-  const notify = useMutation({ mutationFn: (channel: ContactChannel) => api.notify(c.appointmentId, { actorName, channel }), ...opts });
-  const synced = useMutation({ mutationFn: () => api.terminoSynced(c.appointmentId, { actorName }), ...opts });
+  // Umschalter: erneuter Klick auf die aktive Bestätigung nimmt sie zurück (Eintrag wird entfernt).
+  const notify = useMutation({
+    mutationFn: (channel: ContactChannel) =>
+      c.state.notifiedVia === channel
+        ? api.withdrawNotify(c.appointmentId)
+        : api.notify(c.appointmentId, { actorName, channel }),
+    ...opts,
+  });
+  const synced = useMutation({
+    mutationFn: () =>
+      c.state.terminoSynced
+        ? api.withdrawTerminoSynced(c.appointmentId)
+        : api.terminoSynced(c.appointmentId, { actorName }),
+    ...opts,
+  });
 
   const busy = rebook.isPending || cancel.isPending || notify.isPending || synced.isPending;
   const error = rebook.error ?? cancel.error ?? notify.error ?? synced.error;
@@ -171,19 +184,25 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
               <button className="secondary" onClick={copyMessage}>
                 {copied ? 'Kopiert ✓' : 'Text kopieren'}
               </button>
-              {(['phone', 'sms', 'email'] as const).map((ch) => (
-                <button
-                  key={ch}
-                  className={c.contact.channel === ch ? '' : 'secondary'}
-                  disabled={disabled || (ch !== 'email' && !c.patient.phone) || (ch === 'email' && !c.patient.email)}
-                  onClick={() => notify.mutate(ch)}
-                >
-                  Per {CHANNEL_LABEL[ch]} informiert
-                </button>
-              ))}
+              {(['phone', 'sms', 'email'] as const).map((ch) => {
+                const active = c.state.notifiedVia === ch;
+                return (
+                  <button
+                    key={ch}
+                    className={active ? 'confirmed' : 'secondary'}
+                    aria-pressed={active}
+                    title={active ? 'Erneut klicken, um zurückzunehmen' : undefined}
+                    disabled={disabled || (ch !== 'email' && !c.patient.phone) || (ch === 'email' && !c.patient.email)}
+                    onClick={() => notify.mutate(ch)}
+                  >
+                    {active && '✓ '}Per {CHANNEL_LABEL[ch]} informiert
+                  </button>
+                );
+              })}
             </div>
-            {c.state.notifiedVia && <p className="done-note">✓ informiert per {CHANNEL_LABEL[c.state.notifiedVia]}</p>}
-            <p className="muted small">Es wird nichts automatisch versendet. Der Text ist ein Vorschlag.</p>
+            <p className="muted small">
+              Es wird nichts automatisch versendet. Der Text ist ein Vorschlag. Erneuter Klick nimmt die Markierung zurück.
+            </p>
           </>
         ) : (
           <p className="muted">Erst nach der Entscheidung.</p>
@@ -203,17 +222,32 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
                 : `Termin ${c.appointmentId} in Termino auf ${d.to.practitionerName}, ${dayTime(d.to.startsAt)} verlegen.`}
             </p>
             <div className="actions">
-              <button onClick={() => synced.mutate()} disabled={disabled || c.state.terminoSynced}>
-                {c.state.terminoSynced ? 'In Termino erledigt ✓' : 'In Termino erledigt'}
-              </button>
-              <button className="secondary" onClick={onNext}>
-                Nächster offener Termin →
+              <button
+                className={c.state.terminoSynced ? 'confirmed' : 'secondary'}
+                aria-pressed={c.state.terminoSynced}
+                title={c.state.terminoSynced ? 'Erneut klicken, um zurückzunehmen' : undefined}
+                onClick={() => synced.mutate()}
+                disabled={disabled}
+              >
+                {c.state.terminoSynced && '✓ '}In Termino erledigt
               </button>
             </div>
           </>
         ) : (
           <p className="muted">Erst nach der Entscheidung.</p>
         )}
+      </section>
+
+      {/* Schritt 4: Weiter */}
+      <section className="step-block">
+        <h3>
+          <span className={`num ${c.state.status === 'done' ? 'ok' : ''}`}>4</span> Weiter
+        </h3>
+        <div className="actions">
+          <button className="secondary" onClick={onNext}>
+            Nächster offener Termin →
+          </button>
+        </div>
       </section>
 
       {c.history.length > 0 && (

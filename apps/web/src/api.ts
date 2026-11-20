@@ -63,6 +63,8 @@ export interface CaseView {
     decision: Decision | null;
     notifiedVia: ContactChannel | null;
     terminoSynced: boolean;
+    notificationEntryId: string | null;
+    terminoSyncEntryId: string | null;
   };
   message: string | null;
   suggestions: Suggestion[];
@@ -105,8 +107,10 @@ export const api = {
   cancel: (id: string, body: { actorName: string; reason: string }) =>
     request<AuditEntry>(`/api/cases/${id}/cancel`, { method: 'POST', body: JSON.stringify(body) }),
   notify: (id: string, body: { actorName: string; channel: ContactChannel }) =>
-    request<AuditEntry>(`/api/cases/${id}/notify`, { method: 'POST', body: JSON.stringify(body) }),
+    request<unknown>(`/api/cases/${id}/notify`, { method: 'POST', body: JSON.stringify(body) }),
+  withdrawNotify: (id: string) => request<unknown>(`/api/cases/${id}/notify`, { method: 'DELETE' }),
   terminoSynced: (id: string, body: { actorName: string }) =>
-    request<AuditEntry>(`/api/cases/${id}/termino-synced`, { method: 'POST', body: JSON.stringify(body) }),
+    request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'POST', body: JSON.stringify(body) }),
+  withdrawTerminoSynced: (id: string) => request<unknown>(`/api/cases/${id}/termino-synced`, { method: 'DELETE' }),
   reset: () => request<{ ok: boolean }>('/api/demo/reset', { method: 'POST' }),
 };
