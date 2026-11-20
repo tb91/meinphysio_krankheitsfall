@@ -195,6 +195,7 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
                     <CallButton
                       key={ch}
                       reached={active}
+                      failedAttempts={c.state.failedCallAttempts}
                       disabled={disabled || unavailable}
                       onReached={() => notify.mutate('phone')}
                       onNotReached={() => callFailed.mutate()}
@@ -215,18 +216,12 @@ export function CaseDetail({ c, actorName, onNext }: { c: CaseView; actorName: s
                 );
               })}
             </div>
-            {c.state.failedCallAttempts > 0 && (
-              <p className="note">
-                Telefonisch {c.state.failedCallAttempts}× nicht erreicht (bleibt im Protokoll).
-                {!c.state.informed && c.contact.next.length > 0 && ` Weiter per ${stepLabel(c.contact.next)}.`}
-              </p>
-            )}
             {!c.state.informed && openWritten.length > 0 && openWritten.length < c.contact.written.length && (
               <p className="note">Noch offen: {stepLabel(openWritten)}. Schriftlich immer über alle Kanäle informieren.</p>
             )}
             <p className="muted small">
               Es wird nichts automatisch versendet. Der Text ist ein Vorschlag. Erneuter Klick auf eine grüne Markierung nimmt sie
-              zurück.
+              zurück, auf „Nicht erreicht“ startet er einen weiteren Anrufversuch.
             </p>
           </>
         ) : (
@@ -302,17 +297,20 @@ function stepLabel(step: ContactChannel[]): string {
 
 /**
  * Anruf in zwei Schritten: "Angerufen" → teilt sich in "Erreicht" | "Nicht erreicht".
- * Erreicht = informiert per Anruf (grün, umschaltbar). Nicht erreicht = Versuch wird protokolliert,
- * der Button steht danach wieder auf "Angerufen" für einen weiteren Versuch.
+ * Erreicht = informiert per Anruf (grün, umschaltbar).
+ * Nicht erreicht = Versuch wird protokolliert, der Button wird rot mit Kreuz. Er bleibt klickbar:
+ * ein Klick startet den nächsten Anrufversuch (wieder Erreicht | Nicht erreicht).
  */
 function CallButton({
   reached,
+  failedAttempts,
   disabled,
   onReached,
   onNotReached,
   onWithdraw,
 }: {
   reached: boolean;
+  failedAttempts: number;
   disabled: boolean;
   onReached: () => void;
   onNotReached: () => void;
@@ -351,6 +349,13 @@ function CallButton({
           Nicht erreicht
         </button>
       </span>
+    );
+  }
+  if (failedAttempts > 0) {
+    return (
+      <button className="call-btn failed" disabled={disabled} onClick={() => setAsking(true)}>
+        ✗ Nicht erreicht{failedAttempts > 1 && ` (${failedAttempts}×)`}
+      </button>
     );
   }
   return (
