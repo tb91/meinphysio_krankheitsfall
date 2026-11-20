@@ -165,3 +165,28 @@ input {
 .call-btn.split .split-no { border-radius: 0 8px 8px 0; color: var(--urgent); border-color: var(--urgent); border-left: none; }
 .call-btn.split .split-yes:hover:not(:disabled) { background: var(--ok-soft); }
 .call-btn.split .split-no:hover:not(:disabled) { background: var(--urgent-soft); }
+
+/* Nur Testlauf: bewusst fremd zur Oberfläche (Warnstreifen, Monospace, gestrichelt) */
+.testrun {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border: 2px dashed #1c1c1c;
+  border-radius: 4px;
+  background: repeating-linear-gradient(-45deg, #ffd43b 0 10px, #fff3bf 10px 20px);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.75rem;
+}
+.testrun-label { font-weight: 800; letter-spacing: 0.12em; color: #1c1c1c; }
+.testrun-btn {
+  font-family: inherit;
+  font-size: inherit;
+  background: #1c1c1c;
+  border: 1px solid #1c1c1c;
+  color: #ffd43b;
+  border-radius: 2px;
+  padding: 3px 8px;
+}
+.testrun-btn:hover:not(:disabled) { background: #000; }

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { AuditPanel } from './AuditPanel';
+import { TestRunReset } from './TestRunReset';
 import { CaseDetail } from './CaseDetail';
 import { CaseList } from './CaseList';
 import { germanDate, longDate, time } from './format';
@@ -56,6 +57,7 @@ export function App() {
 
   return (
     <div className="app">
+      <TestRunReset />
       <header className="topbar">
         <div>
           <h1>Ausfall-Assistent</h1>
