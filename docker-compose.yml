@@ -17,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgres://physio:physio@db:5432/physio
       DATA_DIR: /app/data
@@ -35,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
     environment:
       API_URL: http://api:3000
     ports:

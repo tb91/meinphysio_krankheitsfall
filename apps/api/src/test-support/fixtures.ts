@@ -1,27 +1,15 @@
 // Test-Hilfen: lädt die echten Case-Daten aus data/ und baut synthetische Termine.
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadMasterData as loadFrom, readTypedExport } from '../data/caseData.js';
 import type { MasterData, TerminoAppointment, TerminoExport } from '../domain/types.js';
 
 const DATA_DIR =
   process.env.DATA_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../../data');
 
-function readJson<T>(file: string): T {
-  return JSON.parse(readFileSync(resolve(DATA_DIR, file), 'utf8')) as T;
-}
-
-export const loadExport0800 = () => readJson<TerminoExport>('termino_export_2026-09-07_0800.json');
-export const loadExport0805 = () => readJson<TerminoExport>('termino_export_2026-09-07_0805.json');
-
-export function loadMasterData(): MasterData {
-  return {
-    praxen: readJson('praxen.json'),
-    therapeuten: readJson('therapeuten.json'),
-    patienten: readJson('patienten.json'),
-    verordnungen: readJson('verordnungen.json'),
-  };
-}
+export const loadExport0800 = (): TerminoExport => readTypedExport(DATA_DIR, 'termino_export_2026-09-07_0800.json');
+export const loadExport0805 = (): TerminoExport => readTypedExport(DATA_DIR, 'termino_export_2026-09-07_0805.json');
+export const loadMasterData = (): MasterData => loadFrom(DATA_DIR);
 
 export const ANNA = 'prac_01';
 export const AUSFALLTAG = '2026-09-07';
