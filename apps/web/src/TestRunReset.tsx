@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 
 /**
- * Nur für den Testlauf/die Vorführung: setzt das komplette Protokoll zurück.
+ * Nur für den Testlauf/die Vorführung: leert das Protokoll und stellt die Szenario-Uhr auf 07:40.
  * Bewusst anders gestaltet (Warnstreifen, Monospace), damit klar ist, dass das
  * keine Funktion für den Empfang ist. In Produktion würde es diesen Button nicht geben.
  */
@@ -23,10 +23,10 @@ export function TestRunReset() {
         className="testrun-btn"
         disabled={reset.isPending}
         onClick={() => {
-          if (confirm('Testlauf zurücksetzen? Das komplette Protokoll wird gelöscht.')) reset.mutate();
+          if (confirm('Testlauf zurücksetzen? Das komplette Protokoll wird gelöscht und die Uhr wieder auf den Szenario-Start (07:40 Uhr) gestellt.')) reset.mutate();
         }}
       >
-        {reset.isPending ? 'setze zurück…' : '↺ Protokoll zurücksetzen'}
+        {reset.isPending ? 'setze zurück…' : '↺ Testlauf zurücksetzen'}
       </button>
     </div>
   );

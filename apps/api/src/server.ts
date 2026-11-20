@@ -142,10 +142,11 @@ app.delete('/api/cases/:id/termino-synced', async (req) => {
   return decide((log) => withdrawTerminoSyncCommand(ctx, log, { appointmentId: id }));
 });
 
-/** Nur für Demo/Video: Protokoll leeren. Keine Produktivfunktion. */
+/** Nur für Testlauf/Video: Protokoll leeren und Szenario-Uhr auf NOW (07:40) stellen. Keine Produktivfunktion. */
 app.post('/api/demo/reset', async () => {
   await resetAuditLog(pool);
-  return { ok: true };
+  clock.reset();
+  return { ok: true, now: clock.now() };
 });
 
 const port = Number(process.env.PORT ?? 3000);
